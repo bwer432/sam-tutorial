@@ -1,0 +1,71 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Resources:
+  CodePipelineArtifacts:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+  CodeBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      # ManagedPolicyArns:
+      #  - XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+      Path: /
+      Policies:
+        - PolicyName: CodeBuildProjectPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:*
+                  - s3:*
+                  - lambda:*
+                  - cloudformation:*
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                Resource: '*'
+                  # - !Ref CodePipelineArtifacts
+                  # - !Sub ${CodePipelineArtifacts.Arn}/*
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource: '*' # !Ref CodePipelineArtifacts
+  CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Artifacts:
+        Type: NO_ARTIFACTS
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: public.ecr.aws/sam/build-nodejs20.x
+        Type: LINUX_CONTAINER
+      ServiceRole: !GetAtt CodeBuildRole.Arn
+      Source:
+        Type: NO_SOURCE
+        BuildSpec: |
+          version: 0.2
+          phases:
+            build:
+              commands:
+                - sam build
+                - sam deploy --no-confirm-changeset --no-fail-on-empty-changeset
+                - sam package --template-file template.yml --output-template-file package.yml --s3-bucket amzn-s3-demo-bucket
+                - sam deploy --template-file package.yml --stack-name my-date-time-app --capabilities CAPABILITY_IAM
+                
